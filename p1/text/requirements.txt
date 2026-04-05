@@ -1,0 +1,9 @@
+# PyTorch CPU wheels for linux aarch64; Dockerfile uses extra-index-url
+# numpy<2: torch 2.2 wheels expect NumPy 1.x ABI
+numpy>=1.23.5,<2
+torch==2.2.2
+transformers==4.38.2
+huggingface_hub==0.21.4
+safetensors>=0.4.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0,<6
