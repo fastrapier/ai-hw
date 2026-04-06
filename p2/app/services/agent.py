@@ -3,12 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from p2.app.config import EVAL_RESULTS_PATH, README_PATH, REPORT_PATH, REPO_ROOT, TASK_PATH
+from p2.app.services.langfuse_observability import LangfuseObservability
 from p2.app.services.ollama import OllamaClient
 
 
 class StudyAgentService:
-    def __init__(self, ollama_client: OllamaClient) -> None:
+    def __init__(
+        self,
+        ollama_client: OllamaClient,
+        observability: LangfuseObservability | None = None,
+    ) -> None:
         self.ollama_client = ollama_client
+        self.observability = observability
 
     def _read_text(self, path: Path) -> str:
         if not path.exists():
@@ -49,6 +55,8 @@ class StudyAgentService:
 
     def answer(self, question: str, model: str | None = None, temperature: float = 0.2) -> dict[str, object]:
         selected_tools = self._select_tools(question)
+        selected_tool_names = [name for name, _ in selected_tools]
+        context_sources = self._context_sources(selected_tools)
         context_blocks = []
         for name, content in selected_tools:
             trimmed = content[:3000]
@@ -67,17 +75,37 @@ class StudyAgentService:
                 "Answer in Russian with short, concrete paragraphs.",
             ]
         )
-        result = self.ollama_client.generate(
-            prompt=prompt,
-            model=model,
-            system=system_prompt,
-            temperature=temperature,
-        )
+        effective_model = model or self.ollama_client.default_model
+
+        if self.observability is not None:
+            result = self.observability.trace_agent_answer(
+                question=question,
+                selected_tools=selected_tool_names,
+                context_sources=context_sources,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                requested_model=model,
+                effective_model=effective_model,
+                temperature=temperature,
+                generate=lambda: self.ollama_client.generate(
+                    prompt=prompt,
+                    model=model,
+                    system=system_prompt,
+                    temperature=temperature,
+                ),
+            )
+        else:
+            result = self.ollama_client.generate(
+                prompt=prompt,
+                model=model,
+                system=system_prompt,
+                temperature=temperature,
+            )
         return {
             "model": result["model"],
             "answer": result["response"],
-            "selected_tools": [name for name, _ in selected_tools],
-            "context_sources": self._context_sources(selected_tools),
+            "selected_tools": selected_tool_names,
+            "context_sources": context_sources,
         }
 
     def _context_sources(self, selected_tools: list[tuple[str, str]]) -> list[str]:

@@ -1,0 +1,202 @@
+name: ai-hw-p3
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: p2/Dockerfile
+    platform: linux/arm64
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama3.2:3b
+      SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-lf_pk_p3_local_demo}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-lf_sk_p3_local_demo}
+      LANGFUSE_TRACE_NAME_PREFIX: p3
+    ports:
+      - "8001:8000"
+    depends_on:
+      - ollama
+      - langfuse-web
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+
+  tests:
+    build:
+      context: ..
+      dockerfile: p2/Dockerfile
+    platform: linux/arm64
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama3.2:3b
+    command: ["pytest", "p2/tests"]
+
+  ollama:
+    image: ollama/ollama:latest
+    platform: linux/arm64
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama-init:
+    image: ollama/ollama:latest
+    platform: linux/arm64
+    depends_on:
+      - ollama
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "until ollama list >/dev/null 2>&1; do sleep 2; done && ollama pull llama3.2:3b"
+      ]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    platform: linux/arm64
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment: &langfuse_env
+      NEXTAUTH_URL: http://localhost:3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      SALT: p3langfusesalt
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      TELEMETRY_ENABLED: true
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: false
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: true
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: true
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredissecret
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    platform: linux/arm64
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      <<: *langfuse_env
+      NEXTAUTH_SECRET: p3-langfuse-nextauth-secret
+      LANGFUSE_INIT_ORG_ID: ai-hw
+      LANGFUSE_INIT_ORG_NAME: AI HW
+      LANGFUSE_INIT_PROJECT_ID: p3-langfuse
+      LANGFUSE_INIT_PROJECT_NAME: P3 Langfuse Demo
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: lf_pk_p3_local_demo
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: lf_sk_p3_local_demo
+      LANGFUSE_INIT_USER_EMAIL: demo@example.com
+      LANGFUSE_INIT_USER_NAME: Demo User
+      LANGFUSE_INIT_USER_PASSWORD: demo-password-123
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server
+    platform: linux/arm64
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  minio:
+    image: cgr.dev/chainguard/minio
+    platform: linux/arm64
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+  redis:
+    image: docker.io/redis:7
+    platform: linux/arm64
+    restart: unless-stopped
+    command: >
+      --requirepass myredissecret
+      --maxmemory-policy noeviction
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  postgres:
+    image: docker.io/postgres:17
+    platform: linux/arm64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  hf_cache:
+  ollama_data:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:
+  langfuse_redis_data:

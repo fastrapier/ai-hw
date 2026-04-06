@@ -17,6 +17,7 @@ from p2.app.schemas import (
     PredictResponse,
 )
 from p2.app.services.agent import StudyAgentService
+from p2.app.services.langfuse_observability import LangfuseObservability
 from p2.app.services.ollama import OllamaClient, OllamaUnavailableError
 from p2.app.services.sentiment import SentimentService
 
@@ -25,8 +26,13 @@ from p2.app.services.sentiment import SentimentService
 async def lifespan(app: FastAPI):
     app.state.sentiment_service = SentimentService()
     app.state.ollama_client = OllamaClient()
-    app.state.agent_service = StudyAgentService(app.state.ollama_client)
+    app.state.langfuse_observability = LangfuseObservability()
+    app.state.agent_service = StudyAgentService(
+        app.state.ollama_client,
+        observability=app.state.langfuse_observability,
+    )
     yield
+    app.state.langfuse_observability.shutdown()
 
 
 app = FastAPI(

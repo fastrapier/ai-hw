@@ -2,6 +2,7 @@ fastapi==0.115.12
 uvicorn==0.34.0
 httpx==0.28.1
 pytest==8.3.5
+langfuse
 numpy>=1.23.5,<2
 torch==2.2.2
 transformers==4.38.2
