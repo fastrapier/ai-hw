@@ -1,0 +1,49 @@
+name: ai-hw-p1
+
+services:
+  text:
+    build: ./text
+    platform: linux/arm64
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./text/input:/workspace/input:ro
+      - ./text/output:/workspace/output
+
+  audio:
+    build: ./audio
+    platform: linux/arm64
+    volumes:
+      - tfhub_cache:/root/.cache/tfhub
+      - ./audio/input:/workspace/input:ro
+      - ./audio/output:/workspace/output
+
+  image:
+    build: ./image
+    platform: linux/arm64
+    volumes:
+      - torch_cache:/root/.cache/torch
+      - ./image/input:/workspace/input:ro
+      - ./image/output:/workspace/output
+
+  video:
+    build: ./video
+    platform: linux/arm64
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./video/input:/workspace/input:ro
+      - ./video/output:/workspace/output
+
+  ollama:
+    image: ollama/ollama:latest
+    platform: linux/arm64
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Для LLM оставляем сервис поднятым; pull модели: см. p1/llm/README.md
+
+volumes:
+  hf_cache:
+  tfhub_cache:
+  torch_cache:
+  ollama_data:
