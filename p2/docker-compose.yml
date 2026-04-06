@@ -1,0 +1,73 @@
+name: ai-hw-p2
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: p2/Dockerfile
+    platform: linux/arm64
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama3.2:3b
+      SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ollama
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+
+  tests:
+    build:
+      context: ..
+      dockerfile: p2/Dockerfile
+    platform: linux/arm64
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama3.2:3b
+    command: ["pytest", "p2/tests"]
+
+  eval:
+    build:
+      context: ..
+      dockerfile: p2/Dockerfile
+    platform: linux/arm64
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama3.2:3b
+    command:
+      [
+        "python",
+        "-m",
+        "p2.scripts.evaluate_models",
+        "--models",
+        "llama3.2:3b",
+        "qwen2.5:3b",
+        "phi3:mini"
+      ]
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    platform: linux/arm64
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama-init:
+    image: ollama/ollama:latest
+    platform: linux/arm64
+    depends_on:
+      - ollama
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "until ollama list >/dev/null 2>&1; do sleep 2; done && ollama pull llama3.2:3b && ollama pull qwen2.5:3b && ollama pull phi3:mini"
+      ]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+volumes:
+  hf_cache:
+  ollama_data:

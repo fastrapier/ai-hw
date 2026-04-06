@@ -1,0 +1,22 @@
+[
+  {
+    "id": "instruction_following",
+    "system": "You are a concise assistant.",
+    "prompt": "Ответь ровно в двух предложениях: чем контейнеризация удобна для учебных ML-проектов?"
+  },
+  {
+    "id": "light_reasoning",
+    "system": "You are a careful reasoning assistant.",
+    "prompt": "У студента есть 4 часа и три задачи: API, тесты и отчёт. Предложи краткий порядок работы и объясни выбор."
+  },
+  {
+    "id": "hallucination_resistance",
+    "system": "If the answer is unknown, say that you do not know.",
+    "prompt": "Назови официальный номер аудитории, где будет защита этого проекта. Если данных нет, так и скажи."
+  },
+  {
+    "id": "agent_helpfulness",
+    "system": "You help a student prepare for a project defense.",
+    "prompt": "Составь 4 вопроса, которые преподаватель может задать по FastAPI API для тональности, и кратко подскажи ожидаемые ответы."
+  }
+]
