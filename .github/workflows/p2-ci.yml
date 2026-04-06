@@ -13,6 +13,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
@@ -27,4 +29,4 @@ jobs:
         run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r p2/requirements.txt
 
       - name: Run tests
-        run: pytest p2/tests
+        run: python -m pytest p2/tests
